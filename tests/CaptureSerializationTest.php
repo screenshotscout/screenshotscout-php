@@ -261,6 +261,38 @@ final class CaptureSerializationTest extends TestCase
         self::assertStringNotContainsString('sk_test', $built);
     }
 
+    public function testAsterisksRemainLiteralAndSignedRequestsMatchTheApiCanonicalization(): void
+    {
+        $transport = new RecordingHttpClient();
+        $client = $this->client($transport, 'ak_test', 'sk_test');
+        $options = (new CaptureOptions())
+            ->withFormat('a*b')
+            ->withHideSelectors(['div > *', '*'])
+            ->withSelector('*');
+        $target = 'https://example.com/*';
+        $signature = 'ab9aa513f70710d04fc8f38aab6b73f9be6cdf49185c6b65f97a14758134da66';
+
+        $client->capture($target, $options, CaptureHttpMethod::GET);
+        $client->capture($target, $options);
+        $built = $client->buildCaptureUrl($target, $options);
+
+        self::assertSame(
+            'url=https%3A%2F%2Fexample.com%2F*&format=a*b&hide_selectors=div+%3E+*&hide_selectors=*&selector=*&signature=' . $signature,
+            $transport->requests()[0]->getUri()->getQuery(),
+        );
+        self::assertSame(
+            sprintf(
+                '{"url":"https://example.com/*","format":"a*b","hide_selectors":["div > *","*"],"selector":"*","signature":"%s"}',
+                $signature,
+            ),
+            (string) $transport->requests()[1]->getBody(),
+        );
+        self::assertSame(
+            'https://api.screenshotscout.com/v1/capture?access_key=ak_test&url=https%3A%2F%2Fexample.com%2F*&format=a*b&hide_selectors=div+%3E+*&hide_selectors=*&selector=*&signature=' . $signature,
+            $built,
+        );
+    }
+
     public function testFloatingPointOptionsUseEcmaScriptFormattingInQueriesAndJson(): void
     {
         $cases = [
@@ -292,6 +324,47 @@ final class CaptureSerializationTest extends TestCase
                 sprintf('{"url":"https://example.com","pdf_scale":%s}', $expected),
                 (string) $transport->requests()[1]->getBody(),
             );
+        }
+    }
+
+    public function testFloatingPointFormattingDoesNotDependOnHostSerializePrecision(): void
+    {
+        $previousPrecision = ini_get('serialize_precision');
+        if (false === $previousPrecision) {
+            self::fail('Expected serialize_precision to be readable.');
+        }
+        if (false === ini_set('serialize_precision', '17')) {
+            self::fail('Expected serialize_precision to be configurable.');
+        }
+
+        try {
+            $transport = new RecordingHttpClient();
+            $client = $this->client($transport, 'ak_test', 'sk_test');
+            $options = (new CaptureOptions())->withPdfScale(0.1);
+            $signature = '84a10fad5c4d35b023eea997a9425082a6a7d466586e2b7f9eae58524e687419';
+
+            $client->capture('https://example.com', $options, CaptureHttpMethod::GET);
+            $client->capture('https://example.com', $options);
+            $built = $client->buildCaptureUrl('https://example.com', $options);
+
+            self::assertSame(
+                'url=https%3A%2F%2Fexample.com&pdf_scale=0.1&signature=' . $signature,
+                $transport->requests()[0]->getUri()->getQuery(),
+            );
+            self::assertSame(
+                sprintf(
+                    '{"url":"https://example.com","pdf_scale":0.1,"signature":"%s"}',
+                    $signature,
+                ),
+                (string) $transport->requests()[1]->getBody(),
+            );
+            self::assertSame(
+                'https://api.screenshotscout.com/v1/capture?access_key=ak_test&url=https%3A%2F%2Fexample.com&pdf_scale=0.1&signature=' . $signature,
+                $built,
+            );
+            self::assertSame('17', ini_get('serialize_precision'));
+        } finally {
+            self::assertNotFalse(ini_set('serialize_precision', $previousPrecision));
         }
     }
 

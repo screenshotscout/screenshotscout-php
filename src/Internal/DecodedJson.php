@@ -8,7 +8,6 @@ namespace ScreenshotScout\Internal;
 final readonly class DecodedJson
 {
     public function __construct(
-        public bool $isObject,
         public mixed $value,
         public mixed $nativeValue,
     ) {}

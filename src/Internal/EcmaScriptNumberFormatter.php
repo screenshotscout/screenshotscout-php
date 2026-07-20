@@ -16,7 +16,7 @@ final class EcmaScriptNumberFormatter
             return '0';
         }
 
-        $encoded = json_encode($value, JSON_THROW_ON_ERROR);
+        $encoded = self::encodeShortestRoundTrip($value);
         if (!str_contains(strtolower($encoded), 'e')) {
             return $encoded;
         }
@@ -48,6 +48,28 @@ final class EcmaScriptNumberFormatter
         }
 
         return $negative ? '-' . $number : $number;
+    }
+
+    private static function encodeShortestRoundTrip(float $value): string
+    {
+        $precision = ini_get('serialize_precision');
+        if (false === $precision) {
+            throw new \JsonException('PHP serialize_precision could not be read.');
+        }
+        if ('-1' === $precision) {
+            return json_encode($value, JSON_THROW_ON_ERROR);
+        }
+        if (false === ini_set('serialize_precision', '-1')) {
+            throw new \JsonException('PHP serialize_precision could not be controlled.');
+        }
+
+        try {
+            return json_encode($value, JSON_THROW_ON_ERROR);
+        } finally {
+            if (false === ini_set('serialize_precision', $precision)) {
+                throw new \JsonException('PHP serialize_precision could not be restored.');
+            }
+        }
     }
 
     private function __construct() {}

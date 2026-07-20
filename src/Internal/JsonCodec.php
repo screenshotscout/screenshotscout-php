@@ -28,7 +28,6 @@ final class JsonCodec
         $decoded = json_decode($body, false, 512, JSON_THROW_ON_ERROR);
 
         return new DecodedJson(
-            $decoded instanceof \stdClass,
             self::normalize($decoded),
             $decoded,
         );
@@ -51,8 +50,7 @@ final class JsonCodec
 
     public static function encodeString(string $value): string
     {
-        $encoded = json_encode($value, self::ENCODE_FLAGS);
-        return $encoded;
+        return json_encode($value, self::ENCODE_FLAGS);
     }
 
     /** @param string|int|float|bool|list<string> $value */

@@ -1,0 +1,21 @@
+# Composer
+/vendor/
+/composer.lock
+composer.phar
+
+# Test, analysis, formatting, and coverage output
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/.phpstan.cache/
+/coverage/
+
+# IDEs and editors
+/.idea/
+/.vscode/
+*.swp
+
+# Local environment and operating-system files
+.env
+.env.*
+.DS_Store
+Thumbs.db

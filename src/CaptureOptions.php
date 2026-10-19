@@ -619,6 +619,16 @@ final class CaptureOptions
         return $this->floatValue('pdfScale');
     }
 
+    public function withPdfPageRanges(?string $value): self
+    {
+        return $this->withValue('pdfPageRanges', $value);
+    }
+
+    public function pdfPageRanges(): ?string
+    {
+        return $this->stringValue('pdfPageRanges');
+    }
+
     public function withCache(?bool $value): self
     {
         return $this->withValue('cache', $value);

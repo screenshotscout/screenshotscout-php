@@ -78,6 +78,7 @@ final class CaptureSerializer
             $builder->add('pdfMarginBottom', 'pdf_margin_bottom', $options->pdfMarginBottom());
             $builder->add('pdfMarginLeft', 'pdf_margin_left', $options->pdfMarginLeft());
             $builder->add('pdfScale', 'pdf_scale', $options->pdfScale());
+            $builder->add('pdfPageRanges', 'pdf_page_ranges', $options->pdfPageRanges());
             $builder->add('cache', 'cache', $options->cache());
             $builder->add('cacheTtl', 'cache_ttl', $options->cacheTtl());
             $builder->add('cacheKey', 'cache_key', $options->cacheKey());

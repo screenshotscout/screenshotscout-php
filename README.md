@@ -189,7 +189,8 @@ include:
 - Image output: `withImageWidth`, `withImageHeight`, `withImageMode`, `withImageAnchor`,
   `withImageAllowUpscale`, `withImageBackground`, `withImageQuality`
 - PDF: `withPdfPaperFormat`, `withPdfLandscape`, `withPdfPrintBackground`, `withPdfMargin`,
-  `withPdfMarginTop`, `withPdfMarginRight`, `withPdfMarginBottom`, `withPdfMarginLeft`, `withPdfScale`
+  `withPdfMarginTop`, `withPdfMarginRight`, `withPdfMarginBottom`, `withPdfMarginLeft`, `withPdfScale`,
+  `withPdfPageRanges`
 - Caching: `withCache`, `withCacheTtl`, `withCacheKey`
 - Storage: `withStorageMode`, `withStorageEndpoint`, `withStorageBucket`, `withStorageRegion`,
   `withStorageObjectKey`

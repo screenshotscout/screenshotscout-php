@@ -94,6 +94,7 @@ final class CaptureSerializationTest extends TestCase
             ->withPdfMarginBottom('')
             ->withPdfMarginLeft('')
             ->withPdfScale(0)
+            ->withPdfPageRanges('')
             ->withCache(false)
             ->withCacheTtl(0)
             ->withCacheKey('')
@@ -172,6 +173,7 @@ final class CaptureSerializationTest extends TestCase
             'pdf_margin_bottom' => '',
             'pdf_margin_left' => '',
             'pdf_scale' => 0,
+            'pdf_page_ranges' => '',
             'cache' => false,
             'cache_ttl' => 0,
             'cache_key' => '',

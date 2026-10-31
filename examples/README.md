@@ -14,5 +14,5 @@ php examples/json.php
 php examples/capture-url.php
 ```
 
-Set `SCREENSHOTSCOUT_SECRET_KEY` as well when signed requests are enabled for the API key.
-The SDK creates its default Guzzle transport automatically.
+`capture-url.php` also reads `SCREENSHOTSCOUT_SECRET_KEY` and signs the URL when it's set. The SDK
+creates its default Guzzle transport automatically.

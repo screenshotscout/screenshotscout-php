@@ -8,6 +8,7 @@ use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use ScreenshotScout\CaptureHttpMethod;
 use ScreenshotScout\CaptureOptions;
+use ScreenshotScout\CaptureResponse;
 use ScreenshotScout\CaptureResponseType;
 use ScreenshotScout\Client;
 use ScreenshotScout\Exception\ConfigurationException;
@@ -223,18 +224,18 @@ final class CaptureSerializationTest extends TestCase
         self::assertSame('', $request->getHeaderLine('Content-Type'));
         self::assertSame('Bearer query-key', $request->getHeaderLine('Authorization'));
         self::assertSame(
-            'url=https%3A%2F%2Fexample.com%2Fa+path&cookies=a%3D1&cookies=a%3D1&headers=X-Test%3Aone&headers=X-Test%3Aone&delay=0&full_page=false&cache_key=',
+            'url=https%3A%2F%2Fexample.com%2Fa%20path&cookies=a%3D1&cookies=a%3D1&headers=X-Test%3Aone&headers=X-Test%3Aone&delay=0&full_page=false&cache_key=',
             $request->getUri()->getQuery(),
         );
         self::assertStringNotContainsString('access_key=', (string) $request->getUri());
         self::assertSame(
-            'https://api.screenshotscout.com/v1/capture?access_key=query-key&url=https%3A%2F%2Fexample.com%2Fa+path&cookies=a%3D1&cookies=a%3D1&headers=X-Test%3Aone&headers=X-Test%3Aone&delay=0&full_page=false&cache_key=',
+            'https://api.screenshotscout.com/v1/capture?access_key=query-key&url=https%3A%2F%2Fexample.com%2Fa%20path&cookies=a%3D1&cookies=a%3D1&headers=X-Test%3Aone&headers=X-Test%3Aone&delay=0&full_page=false&cache_key=',
             $built,
         );
         self::assertCount(1, $transport->requests());
     }
 
-    public function testGetPostAndGeneratedUrlSignaturesMatchTheApiAlgorithm(): void
+    public function testGetAndGeneratedUrlSignaturesMatchTheApiAlgorithm(): void
     {
         $transport = new RecordingHttpClient(
             static fn(): Response => new Response(200, ['Content-Type' => 'application/json'], '{}'),
@@ -246,24 +247,21 @@ final class CaptureSerializationTest extends TestCase
             ->withDelay(0)
             ->withHeaders(['X-Test:one', 'X-Test:two']);
         $target = 'https://example.com/a b?x=1&y=2';
-        $expected = '0c4928ba691575903f27b911b8ea1a536604ca070d60d886e10c127c05e236fc';
+        $expected = '6419f2ac8c0440f1e341b547630606c9dc74dacfbb2df8e122fc9ae26831d893';
 
         $client->capture($target, $options, CaptureHttpMethod::GET);
-        $client->capture($target, $options);
         $built = $client->buildCaptureUrl($target, $options);
 
         parse_str($transport->requests()[0]->getUri()->getQuery(), $getQuery);
-        $postBody = self::decodeRequestBody($transport->requests()[1]);
         parse_str((string) parse_url($built, PHP_URL_QUERY), $builtQuery);
         self::assertSame($expected, $getQuery['signature']);
-        self::assertSame($expected, $postBody['signature']);
         self::assertSame($expected, $builtQuery['signature']);
         self::assertSame('ak_test', $builtQuery['access_key']);
-        self::assertArrayNotHasKey('access_key', $postBody);
+        self::assertArrayNotHasKey('access_key', $getQuery);
         self::assertStringNotContainsString('sk_test', $built);
     }
 
-    public function testAsterisksRemainLiteralAndSignedRequestsMatchTheApiCanonicalization(): void
+    public function testAsterisksArePercentEncodedAndSignedRequestsMatchTheApiCanonicalization(): void
     {
         $transport = new RecordingHttpClient();
         $client = $this->client($transport, 'ak_test', 'sk_test');
@@ -272,25 +270,17 @@ final class CaptureSerializationTest extends TestCase
             ->withHideSelectors(['div > *', '*'])
             ->withSelector('*');
         $target = 'https://example.com/*';
-        $signature = 'ab9aa513f70710d04fc8f38aab6b73f9be6cdf49185c6b65f97a14758134da66';
+        $signature = '3630654706e17fa9a911b0cb9a2b06dc746012ec2015d5dfd955e52f018c7437';
 
         $client->capture($target, $options, CaptureHttpMethod::GET);
-        $client->capture($target, $options);
         $built = $client->buildCaptureUrl($target, $options);
 
         self::assertSame(
-            'url=https%3A%2F%2Fexample.com%2F*&format=a*b&hide_selectors=div+%3E+*&hide_selectors=*&selector=*&signature=' . $signature,
+            'url=https%3A%2F%2Fexample.com%2F%2A&format=a%2Ab&hide_selectors=div%20%3E%20%2A&hide_selectors=%2A&selector=%2A&signature=' . $signature,
             $transport->requests()[0]->getUri()->getQuery(),
         );
         self::assertSame(
-            sprintf(
-                '{"url":"https://example.com/*","format":"a*b","hide_selectors":["div > *","*"],"selector":"*","signature":"%s"}',
-                $signature,
-            ),
-            (string) $transport->requests()[1]->getBody(),
-        );
-        self::assertSame(
-            'https://api.screenshotscout.com/v1/capture?access_key=ak_test&url=https%3A%2F%2Fexample.com%2F*&format=a*b&hide_selectors=div+%3E+*&hide_selectors=*&selector=*&signature=' . $signature,
+            'https://api.screenshotscout.com/v1/capture?access_key=ak_test&url=https%3A%2F%2Fexample.com%2F%2A&format=a%2Ab&hide_selectors=div%20%3E%20%2A&hide_selectors=%2A&selector=%2A&signature=' . $signature,
             $built,
         );
     }
@@ -342,11 +332,12 @@ final class CaptureSerializationTest extends TestCase
         try {
             $transport = new RecordingHttpClient();
             $client = $this->client($transport, 'ak_test', 'sk_test');
+            $unsignedClient = $this->client($transport, 'ak_test');
             $options = (new CaptureOptions())->withPdfScale(0.1);
             $signature = '84a10fad5c4d35b023eea997a9425082a6a7d466586e2b7f9eae58524e687419';
 
             $client->capture('https://example.com', $options, CaptureHttpMethod::GET);
-            $client->capture('https://example.com', $options);
+            $unsignedClient->capture('https://example.com', $options);
             $built = $client->buildCaptureUrl('https://example.com', $options);
 
             self::assertSame(
@@ -354,10 +345,7 @@ final class CaptureSerializationTest extends TestCase
                 $transport->requests()[0]->getUri()->getQuery(),
             );
             self::assertSame(
-                sprintf(
-                    '{"url":"https://example.com","pdf_scale":0.1,"signature":"%s"}',
-                    $signature,
-                ),
+                '{"url":"https://example.com","pdf_scale":0.1}',
                 (string) $transport->requests()[1]->getBody(),
             );
             self::assertSame(
@@ -370,20 +358,23 @@ final class CaptureSerializationTest extends TestCase
         }
     }
 
-    public function testSignedPostWithAWholeFloatMatchesApiCanonicalization(): void
+    public function testClientWithASecretKeyRefusesPostWithoutCallingTheTransport(): void
     {
         $transport = new RecordingHttpClient();
         $client = $this->client($transport, 'ak_test', 'sk_test');
+        $message = "POST requests can't be signed. This client has a secret key: send this capture with method GET, "
+            . "or use a client without a secret key and an API key that doesn't require signed requests.";
 
-        $client->capture(
-            'https://example.com',
-            (new CaptureOptions())->withPdfScale(2.0),
+        $this->expectConfigurationException(
+            static fn(): CaptureResponse => $client->capture('https://example.com'),
+            $message,
+        );
+        $this->expectConfigurationException(
+            static fn(): CaptureResponse => $client->capture('https://example.com', null, CaptureHttpMethod::POST),
+            $message,
         );
 
-        self::assertSame(
-            '{"url":"https://example.com","pdf_scale":2,"signature":"9455e37a8893f7a2e43d5bdf8203986139f66f768bd7ccebb8c8df80604a9683"}',
-            (string) $transport->requests()[0]->getBody(),
-        );
+        self::assertCount(0, $transport->requests());
     }
 
     public function testUnsafeStructuresAndValuesFailBeforeCallingTheTransport(): void
@@ -431,13 +422,16 @@ final class CaptureSerializationTest extends TestCase
         self::assertFalse($configured->fullPage());
     }
 
-    /** @param callable(): Client $operation */
-    private function expectConfigurationException(callable $operation): void
+    /** @param callable(): mixed $operation */
+    private function expectConfigurationException(callable $operation, ?string $message = null): void
     {
         try {
             $operation();
             self::fail('Expected client configuration to fail.');
-        } catch (ConfigurationException) {
+        } catch (ConfigurationException $exception) {
+            if (null !== $message) {
+                self::assertSame($message, $exception->getMessage());
+            }
         }
     }
 

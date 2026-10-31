@@ -55,7 +55,10 @@ final class Client
         $this->httpClient = $httpClient ?? new GuzzleClient();
     }
 
-    /** Sends one GET or POST request and waits for the final inline capture response. */
+    /**
+     * Sends one GET or POST request and waits for the final inline capture response. A client with a
+     * secret key signs GET requests and refuses POST, because POST requests can't be signed.
+     */
     public function capture(
         string $url,
         ?CaptureOptions $options = null,
@@ -63,6 +66,12 @@ final class Client
     ): CaptureResponse {
         $serialized = CaptureSerializer::serialize($url, $options);
         $expectedKind = self::expectedResponseKind($options);
+        if (null !== $this->secretKey && CaptureHttpMethod::POST === $method) {
+            throw new ConfigurationException(
+                "POST requests can't be signed. This client has a secret key: send this capture with method GET, "
+                . "or use a client without a secret key and an API key that doesn't require signed requests.",
+            );
+        }
         $signature = $this->createSignature($serialized->pairs);
         $request = $this->createRequest($serialized, $method, $signature);
 
@@ -132,11 +141,7 @@ final class Client
                     self::CAPTURE_ENDPOINT . '?' . CaptureSerializer::encodeQuery($pairs),
                 );
             } else {
-                $body = $serialized->body;
-                if (null !== $signature) {
-                    $body['signature'] = $signature;
-                }
-                $json = CaptureSerializer::serializeJsonBody($body);
+                $json = CaptureSerializer::serializeJsonBody($serialized->body);
                 $request = new Request(
                     CaptureHttpMethod::POST->value,
                     self::CAPTURE_ENDPOINT,

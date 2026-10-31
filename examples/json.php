@@ -14,13 +14,7 @@ if (!is_string($accessKey) || '' === trim($accessKey)) {
     throw new RuntimeException('Set SCREENSHOTSCOUT_ACCESS_KEY first.');
 }
 
-$secretKey = getenv('SCREENSHOTSCOUT_SECRET_KEY');
-$secretKey = is_string($secretKey) && '' !== $secretKey ? $secretKey : null;
-
-$client = new Client(
-    $accessKey,
-    secretKey: $secretKey,
-);
+$client = new Client($accessKey);
 $response = $client->capture(
     'https://example.com',
     (new CaptureOptions())->withResponseType(CaptureResponseType::JSON),

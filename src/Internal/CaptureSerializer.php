@@ -116,12 +116,16 @@ final class CaptureSerializer
         ));
     }
 
-    /** @param list<WirePair> $pairs */
+    /**
+     * Encodes each name and value with RFC 3986 rules: only A-Z a-z 0-9 - . _ ~ stay as they are.
+     *
+     * @param list<WirePair> $pairs
+     */
     public static function encodeQuery(array $pairs): string
     {
         $encoded = [];
         foreach ($pairs as $pair) {
-            $encoded[] = self::formEncode($pair->name) . '=' . self::formEncode($pair->value);
+            $encoded[] = rawurlencode($pair->name) . '=' . rawurlencode($pair->value);
         }
 
         return implode('&', $encoded);
@@ -137,12 +141,6 @@ final class CaptureSerializer
         } catch (\Throwable $cause) {
             throw new SerializationException('The POST capture body could not be serialized as JSON.', null, $cause);
         }
-    }
-
-    /** Encodes one component using the same form rules as WHATWG URLSearchParams. */
-    private static function formEncode(string $value): string
-    {
-        return str_replace('%2A', '*', urlencode($value));
     }
 
     private function __construct() {}

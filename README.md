@@ -38,10 +38,7 @@ use ScreenshotScout\Client;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$client = new Client(
-    accessKey: 'YOUR_ACCESS_KEY',
-    secretKey: 'YOUR_SECRET_KEY',
-);
+$client = new Client(accessKey: 'YOUR_ACCESS_KEY');
 
 $response = $client->capture(
     'https://example.com',
@@ -75,10 +72,7 @@ use ScreenshotScout\JsonCaptureResponse;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$client = new Client(
-    accessKey: 'YOUR_ACCESS_KEY',
-    secretKey: 'YOUR_SECRET_KEY',
-);
+$client = new Client(accessKey: 'YOUR_ACCESS_KEY');
 
 $response = $client->capture(
     'https://example.com',
@@ -164,7 +158,8 @@ signs them automatically. Before sharing generated URLs, enable **Require signed
 ## Signed requests
 
 Pass the API key's secret as the optional `secretKey` constructor argument. The client then signs
-capture requests and generated capture URLs automatically. The secret key is never transmitted. See
+generated capture URLs and GET requests automatically. The secret key is never transmitted. POST
+requests can't be signed, so capture with `CaptureHttpMethod::GET`, as in [Use GET](#use-get). See
 the [signed requests guide](https://screenshotscout.com/docs/signed-requests).
 
 ## Capture options
@@ -220,7 +215,6 @@ require __DIR__ . '/vendor/autoload.php';
 
 $client = new Client(
     accessKey: 'YOUR_ACCESS_KEY',
-    secretKey: 'YOUR_SECRET_KEY',
     httpClient: new GuzzleClient(['timeout' => 300]),
 );
 
@@ -259,10 +253,7 @@ use ScreenshotScout\Exception\TransportException;
 require __DIR__ . '/vendor/autoload.php';
 
 try {
-    $client = new Client(
-        accessKey: 'YOUR_ACCESS_KEY',
-        secretKey: 'YOUR_SECRET_KEY',
-    );
+    $client = new Client(accessKey: 'YOUR_ACCESS_KEY');
     $client->capture('https://example.com');
     echo 'Capture succeeded.' . PHP_EOL;
 } catch (ApiException $exception) {

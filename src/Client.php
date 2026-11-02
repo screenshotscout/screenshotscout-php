@@ -27,6 +27,8 @@ final class Client
 {
     private const CAPTURE_ENDPOINT = 'https://api.screenshotscout.com/v1/capture';
     private const ACCESS_KEY_PATTERN = '#^[A-Za-z0-9\-._~+/]+=*$#D';
+    /** Longer than the longest capture Screenshot Scout allows (240 seconds). */
+    private const STREAM_TIMEOUT_SECONDS = 300;
 
     private readonly ?string $secretKey;
     private readonly ClientInterface $httpClient;
@@ -52,7 +54,7 @@ final class Client
             );
         }
         $this->secretKey = $secretKey;
-        $this->httpClient = $httpClient ?? new GuzzleClient();
+        $this->httpClient = $httpClient ?? self::defaultHttpClient();
     }
 
     /**
@@ -356,5 +358,23 @@ final class Client
     private static function firstHeader(RawResponse $response, string $name): ?string
     {
         return $response->header($name)[0] ?? null;
+    }
+
+    private static function defaultHttpClient(): ClientInterface
+    {
+        return new GuzzleClient(
+            self::defaultHttpClientOptions(function_exists('curl_exec') || function_exists('curl_multi_exec')),
+        );
+    }
+
+    /**
+     * Without the cURL extension, Guzzle sends requests through PHP streams, which stop waiting after
+     * default_socket_timeout (60 seconds unless configured). With cURL, there is no limit by default.
+     *
+     * @return array<string, int>
+     */
+    private static function defaultHttpClientOptions(bool $curlAvailable): array
+    {
+        return $curlAvailable ? [] : ['timeout' => self::STREAM_TIMEOUT_SECONDS];
     }
 }

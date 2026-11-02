@@ -230,8 +230,9 @@ if (!$response instanceof BinaryCaptureResponse) {
 file_put_contents('screenshot.png', $response->bytes());
 ```
 
-The default HTTP client has no total request timeout. A custom client can also configure proxies,
-TLS, and other HTTP settings.
+The default HTTP client has no total request timeout. Without PHP's cURL extension, it waits up to
+300 seconds for a response. A custom client can also configure proxies, TLS, and other HTTP
+settings.
 
 ## Raw responses and errors
 

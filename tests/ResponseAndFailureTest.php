@@ -239,6 +239,14 @@ final class ResponseAndFailureTest extends TestCase
         self::assertCount(1, $transport->requests());
     }
 
+    public function testDefaultHttpClientWaitsLongerThanTheLongestCaptureWithoutCurl(): void
+    {
+        $options = new \ReflectionMethod(Client::class, 'defaultHttpClientOptions');
+
+        self::assertSame(['timeout' => 300], $options->invoke(null, false));
+        self::assertSame([], $options->invoke(null, true));
+    }
+
     private function respondingWith(ResponseInterface $response): RecordingHttpClient
     {
         return new RecordingHttpClient(static fn(): ResponseInterface => $response);

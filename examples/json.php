@@ -9,12 +9,7 @@ use ScreenshotScout\JsonCaptureResponse;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-$accessKey = getenv('SCREENSHOTSCOUT_ACCESS_KEY');
-if (!is_string($accessKey) || '' === trim($accessKey)) {
-    throw new RuntimeException('Set SCREENSHOTSCOUT_ACCESS_KEY first.');
-}
-
-$client = new Client($accessKey);
+$client = new Client(); // Reads SCREENSHOTSCOUT_ACCESS_KEY
 $response = $client->capture(
     'https://example.com',
     (new CaptureOptions())->withResponseType(CaptureResponseType::JSON),

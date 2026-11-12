@@ -19,8 +19,11 @@ composer require screenshotscout/sdk
 ## Get your API credentials
 
 [Sign up for Screenshot Scout](https://screenshotscout.com/auth/signup) or sign in, then copy the
-access key and secret key from the [API Keys page](https://screenshotscout.com/app/api-keys). The
-access key is required. The secret key is optional and enables [signed requests](#signed-requests).
+access key from the [API Keys page](https://screenshotscout.com/app/api-keys). You only need the
+secret key for [signed requests](#signed-requests).
+
+Set the access key as the `SCREENSHOTSCOUT_ACCESS_KEY` environment variable, or
+[pass it in code](#pass-the-keys-yourself).
 
 ## Capture a screenshot
 
@@ -38,7 +41,7 @@ use ScreenshotScout\Client;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$client = new Client(accessKey: 'YOUR_ACCESS_KEY');
+$client = new Client(); // Reads SCREENSHOTSCOUT_ACCESS_KEY
 
 $response = $client->capture(
     'https://example.com',
@@ -53,8 +56,9 @@ file_put_contents('screenshot.png', $response->bytes());
 echo ($response->screenshotUrl() ?? 'No screenshot URL returned') . PHP_EOL;
 ```
 
-POST is used by default. `capture()` returns a `BinaryCaptureResponse` unless JSON is requested.
-Use `bytes()` to access the screenshot or PDF contents.
+POST is the default, or GET when the client has a secret key. `capture()` returns a
+`BinaryCaptureResponse` unless JSON is requested. Use `bytes()` to access the screenshot or PDF
+contents.
 
 ## Request a JSON result
 
@@ -72,7 +76,7 @@ use ScreenshotScout\JsonCaptureResponse;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$client = new Client(accessKey: 'YOUR_ACCESS_KEY');
+$client = new Client(); // Reads SCREENSHOTSCOUT_ACCESS_KEY
 
 $response = $client->capture(
     'https://example.com',
@@ -88,7 +92,8 @@ echo ($response->result()->screenshotUrl() ?? 'No screenshot URL returned') . PH
 
 ## Use GET
 
-Pass `CaptureHttpMethod::GET` as the third argument. POST remains the default.
+POST is the default, or GET when the client has a secret key. To send a GET request, pass
+`CaptureHttpMethod::GET` as the third argument.
 
 ```php
 <?php
@@ -103,10 +108,7 @@ use ScreenshotScout\Client;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$client = new Client(
-    accessKey: 'YOUR_ACCESS_KEY',
-    secretKey: 'YOUR_SECRET_KEY',
-);
+$client = new Client(); // Reads SCREENSHOTSCOUT_ACCESS_KEY
 
 $response = $client->capture(
     'https://example.com',
@@ -136,10 +138,7 @@ use ScreenshotScout\Client;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$client = new Client(
-    accessKey: 'YOUR_ACCESS_KEY',
-    secretKey: 'YOUR_SECRET_KEY',
-);
+$client = new Client(); // Reads SCREENSHOTSCOUT_ACCESS_KEY
 
 $captureUrl = $client->buildCaptureUrl(
     'https://example.com',
@@ -157,10 +156,55 @@ signs them automatically. Before sharing generated URLs, enable **Require signed
 
 ## Signed requests
 
-Pass the API key's secret as the optional `secretKey` constructor argument. The client then signs
-generated capture URLs and GET requests automatically. The secret key is never transmitted. POST
-requests can't be signed, so capture with `CaptureHttpMethod::GET`, as in [Use GET](#use-get). See
-the [signed requests guide](https://screenshotscout.com/docs/signed-requests).
+Set the API key's secret key as the `SCREENSHOTSCOUT_SECRET_KEY` environment variable. The client
+then signs its capture requests and the capture URLs it builds, with no change to your code:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use ScreenshotScout\CaptureOptions;
+use ScreenshotScout\Client;
+
+require __DIR__ . '/vendor/autoload.php';
+
+$client = new Client(); // Reads SCREENSHOTSCOUT_ACCESS_KEY and SCREENSHOTSCOUT_SECRET_KEY
+
+$client->capture(
+    'https://example.com',
+    (new CaptureOptions())->withFullPage(true),
+);
+```
+
+The secret key is used locally and is never transmitted. See the
+[signed requests guide](https://screenshotscout.com/docs/signed-requests) for details.
+
+## Pass the keys yourself
+
+To use keys from somewhere other than the environment, such as a secrets manager or per-customer
+settings, pass them to the client:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use ScreenshotScout\Client;
+
+require __DIR__ . '/vendor/autoload.php';
+
+$client = new Client(
+    accessKey: $config['access_key'],
+    secretKey: $config['secret_key'], // optional
+);
+```
+
+If you pass either key, the client reads neither environment variable. If you pass no key, for
+example because the variable holding it is `null`, the client reads both environment variables
+instead.
+
+With Laravel's config cache, `.env` isn't loaded at runtime, so pass the keys from your config.
 
 ## Capture options
 
@@ -213,10 +257,7 @@ use ScreenshotScout\Client;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$client = new Client(
-    accessKey: 'YOUR_ACCESS_KEY',
-    httpClient: new GuzzleClient(['timeout' => 300]),
-);
+$client = new Client(httpClient: new GuzzleClient(['timeout' => 300])); // Reads SCREENSHOTSCOUT_ACCESS_KEY
 
 $response = $client->capture(
     'https://example.com',
@@ -254,7 +295,7 @@ use ScreenshotScout\Exception\TransportException;
 require __DIR__ . '/vendor/autoload.php';
 
 try {
-    $client = new Client(accessKey: 'YOUR_ACCESS_KEY');
+    $client = new Client(); // Reads SCREENSHOTSCOUT_ACCESS_KEY
     $client->capture('https://example.com');
     echo 'Capture succeeded.' . PHP_EOL;
 } catch (ApiException $exception) {

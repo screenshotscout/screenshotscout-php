@@ -358,23 +358,41 @@ final class CaptureSerializationTest extends TestCase
         }
     }
 
-    public function testClientWithASecretKeyRefusesPostWithoutCallingTheTransport(): void
+    public function testClientWithASecretKeyRefusesAnExplicitPostWithoutCallingTheTransport(): void
     {
         $transport = new RecordingHttpClient();
         $client = $this->client($transport, 'ak_test', 'sk_test');
-        $message = "POST requests can't be signed. This client has a secret key: send this capture with method GET, "
-            . "or use a client without a secret key and an API key that doesn't require signed requests.";
 
         $this->expectConfigurationException(
-            static fn(): CaptureResponse => $client->capture('https://example.com'),
-            $message,
-        );
-        $this->expectConfigurationException(
             static fn(): CaptureResponse => $client->capture('https://example.com', null, CaptureHttpMethod::POST),
-            $message,
+            "POST requests can't be signed. This client has a secret key: send this capture with method GET, "
+            . "or use a client without a secret key and an API key that doesn't require signed requests.",
         );
 
         self::assertCount(0, $transport->requests());
+    }
+
+    public function testClientWithASecretKeySendsASignedGetWhenNoMethodIsChosen(): void
+    {
+        $transport = new RecordingHttpClient(
+            static fn(): Response => new Response(200, ['Content-Type' => 'application/json'], '{}'),
+        );
+        $client = $this->client($transport, 'ak_test', 'sk_test');
+        $options = (new CaptureOptions())
+            ->withResponseType(CaptureResponseType::JSON)
+            ->withFullPage(false)
+            ->withDelay(0)
+            ->withHeaders(['X-Test:one', 'X-Test:two']);
+
+        $client->capture('https://example.com/a b?x=1&y=2', $options);
+
+        self::assertCount(1, $transport->requests());
+        $request = $transport->requests()[0];
+        self::assertSame('GET', $request->getMethod());
+        self::assertSame('', (string) $request->getBody());
+        self::assertSame('Bearer ak_test', $request->getHeaderLine('Authorization'));
+        parse_str($request->getUri()->getQuery(), $query);
+        self::assertSame('6419f2ac8c0440f1e341b547630606c9dc74dacfbb2df8e122fc9ae26831d893', $query['signature']);
     }
 
     public function testUnsafeStructuresAndValuesFailBeforeCallingTheTransport(): void

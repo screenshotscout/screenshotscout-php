@@ -7,18 +7,8 @@ use ScreenshotScout\Client;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-$accessKey = getenv('SCREENSHOTSCOUT_ACCESS_KEY');
-if (!is_string($accessKey) || '' === trim($accessKey)) {
-    throw new RuntimeException('Set SCREENSHOTSCOUT_ACCESS_KEY first.');
-}
-
-$secretKey = getenv('SCREENSHOTSCOUT_SECRET_KEY');
-$secretKey = is_string($secretKey) && '' !== $secretKey ? $secretKey : null;
-
-$client = new Client(
-    $accessKey,
-    secretKey: $secretKey,
-);
+// Reads SCREENSHOTSCOUT_ACCESS_KEY, and SCREENSHOTSCOUT_SECRET_KEY if it's set
+$client = new Client();
 
 echo $client->buildCaptureUrl(
     'https://example.com',

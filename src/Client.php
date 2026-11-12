@@ -16,8 +16,10 @@ use ScreenshotScout\Exception\ScreenshotScoutException;
 use ScreenshotScout\Exception\SerializationException;
 use ScreenshotScout\Exception\TransportException;
 use ScreenshotScout\Internal\CaptureSerializer;
+use ScreenshotScout\Internal\Credentials;
 use ScreenshotScout\Internal\DefaultBinaryCaptureResponse;
 use ScreenshotScout\Internal\DefaultJsonCaptureResponse;
+use ScreenshotScout\Internal\Environment;
 use ScreenshotScout\Internal\JsonCodec;
 use ScreenshotScout\Internal\SerializedCaptureOptions;
 use ScreenshotScout\Internal\WirePair;
@@ -30,50 +32,69 @@ final class Client
     /** Longer than the longest capture Screenshot Scout allows (240 seconds). */
     private const STREAM_TIMEOUT_SECONDS = 300;
 
-    private readonly ?string $secretKey;
+    /** The keys are kept as \SensitiveParameterValue, which hides them from var_dump() and similar output. */
+    private readonly \SensitiveParameterValue $accessKey;
+    private readonly ?\SensitiveParameterValue $secretKey;
+    private readonly bool $secretKeyFromEnvironment;
     private readonly ClientInterface $httpClient;
 
     /**
      * Creates a client using the default Guzzle transport or an optional caller-owned PSR-18 client.
+     *
+     * When both keys are null, the client reads SCREENSHOTSCOUT_ACCESS_KEY and, if it's set,
+     * SCREENSHOTSCOUT_SECRET_KEY. Passing either key means neither variable is read.
      */
     public function __construct(
-        private readonly string $accessKey,
+        #[\SensitiveParameter]
+        ?string $accessKey = null,
+        #[\SensitiveParameter]
         ?string $secretKey = null,
         ?ClientInterface $httpClient = null,
     ) {
-        if ('' === trim($accessKey)) {
+        $credentials = Credentials::resolve($accessKey, $secretKey, Environment::read(...));
+
+        $accessKey = $credentials->accessKey;
+        if (null === $accessKey || '' === trim($accessKey)) {
             throw new ConfigurationException('A non-blank Screenshot Scout access key is required.');
         }
         if (1 !== preg_match(self::ACCESS_KEY_PATTERN, $accessKey)) {
             throw new ConfigurationException('The Screenshot Scout access key is not a valid Bearer credential.');
         }
 
+        $secretKey = $credentials->secretKey;
         if (null !== $secretKey && '' === trim($secretKey)) {
             throw new ConfigurationException(
                 'The Screenshot Scout secret key must be a non-blank string when provided.',
             );
         }
-        $this->secretKey = $secretKey;
+
+        $this->accessKey = new \SensitiveParameterValue($accessKey);
+        $this->secretKey = null === $secretKey ? null : new \SensitiveParameterValue($secretKey);
+        $this->secretKeyFromEnvironment = $credentials->fromEnvironment && null !== $secretKey;
         $this->httpClient = $httpClient ?? self::defaultHttpClient();
     }
 
     /**
-     * Sends one GET or POST request and waits for the final inline capture response. A client with a
-     * secret key signs GET requests and refuses POST, because POST requests can't be signed.
+     * Sends one GET or POST request and waits for the final inline capture response. The method defaults
+     * to POST, or GET when the client has a secret key. A client with a secret key signs its requests and
+     * refuses POST, because POST requests can't be signed.
      */
     public function capture(
         string $url,
         ?CaptureOptions $options = null,
-        CaptureHttpMethod $method = CaptureHttpMethod::POST,
+        ?CaptureHttpMethod $method = null,
     ): CaptureResponse {
         $serialized = CaptureSerializer::serialize($url, $options);
         $expectedKind = self::expectedResponseKind($options);
         if (null !== $this->secretKey && CaptureHttpMethod::POST === $method) {
-            throw new ConfigurationException(
-                "POST requests can't be signed. This client has a secret key: send this capture with method GET, "
+            throw new ConfigurationException(sprintf(
+                "POST requests can't be signed. This client has a secret key%s: send this capture with method GET, "
                 . "or use a client without a secret key and an API key that doesn't require signed requests.",
-            );
+                $this->secretKeyFromEnvironment ? ' from ' . Credentials::SECRET_KEY_VARIABLE : '',
+            ));
         }
+        // Without a method, a client that signs sends GET, because POST requests can't be signed.
+        $method ??= null === $this->secretKey ? CaptureHttpMethod::POST : CaptureHttpMethod::GET;
         $signature = $this->createSignature($serialized->pairs);
         $request = $this->createRequest($serialized, $method, $signature);
 
@@ -101,7 +122,7 @@ final class Client
     {
         $serialized = CaptureSerializer::serialize($url, $options);
         $signature = $this->createSignature($serialized->pairs);
-        $pairs = [new WirePair('access_key', $this->accessKey), ...$serialized->pairs];
+        $pairs = [new WirePair('access_key', $this->accessKey()), ...$serialized->pairs];
         if (null !== $signature) {
             $pairs[] = new WirePair('signature', $signature);
         }
@@ -109,17 +130,34 @@ final class Client
         return self::CAPTURE_ENDPOINT . '?' . CaptureSerializer::encodeQuery($pairs);
     }
 
+    private function accessKey(): string
+    {
+        /** @var string $accessKey */
+        $accessKey = $this->accessKey->getValue();
+
+        return $accessKey;
+    }
+
+    private function secretKey(): ?string
+    {
+        /** @var string|null $secretKey */
+        $secretKey = $this->secretKey?->getValue();
+
+        return $secretKey;
+    }
+
     /** @param list<WirePair> $pairs */
     private function createSignature(array $pairs): ?string
     {
-        if (null === $this->secretKey) {
+        $secretKey = $this->secretKey();
+        if (null === $secretKey) {
             return null;
         }
 
         try {
-            $canonical = CaptureSerializer::buildCanonicalQuery($pairs, $this->accessKey);
+            $canonical = CaptureSerializer::buildCanonicalQuery($pairs, $this->accessKey());
 
-            return hash_hmac('sha256', $canonical, $this->secretKey);
+            return hash_hmac('sha256', $canonical, $secretKey);
         } catch (ScreenshotScoutException $exception) {
             throw $exception;
         } catch (\Throwable $cause) {
@@ -152,7 +190,7 @@ final class Client
                 );
             }
 
-            return $request->withHeader('Authorization', 'Bearer ' . $this->accessKey);
+            return $request->withHeader('Authorization', 'Bearer ' . $this->accessKey());
         } catch (ScreenshotScoutException $exception) {
             throw $exception;
         } catch (\Throwable $cause) {

@@ -206,6 +206,26 @@ instead.
 
 With Laravel's config cache, `.env` isn't loaded at runtime, so pass the keys from your config.
 
+## Send requests to another server
+
+To send requests to another server, such as your own proxy or a mock server, pass its base URL, or
+set it as the `SCREENSHOTSCOUT_BASE_URL` environment variable:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use ScreenshotScout\Client;
+
+require __DIR__ . '/vendor/autoload.php';
+
+$client = new Client(baseUrl: 'https://proxy.example.com'); // Reads SCREENSHOTSCOUT_ACCESS_KEY
+```
+
+The client sends captures to the base URL plus `/v1/capture`, and `buildCaptureUrl()` builds URLs on
+it. A base URL you pass wins over the variable.
+
 ## Capture options
 
 `CaptureOptions` is immutable: each `with...()` method returns a changed copy. Available options

@@ -103,6 +103,70 @@ final class CredentialsTest extends TestCase
         self::assertSame([], $read);
     }
 
+    public function testABaseUrlIsUsedAsGivenWithoutTrailingSlashesAndNoVariableIsRead(): void
+    {
+        $cases = [
+            ['http://localhost:8787', 'http://localhost:8787/v1/capture'],
+            ['http://localhost:8787/', 'http://localhost:8787/v1/capture'],
+            ['https://proxy.example.com/screenshotscout//', 'https://proxy.example.com/screenshotscout/v1/capture'],
+            ['https://proxy.example.com/a%20b', 'https://proxy.example.com/a%20b/v1/capture'],
+            ['not a url', 'not a url/v1/capture'],
+        ];
+
+        foreach ($cases as [$baseUrl, $url]) {
+            $read = [];
+            $lookup = static function (string $name) use (&$read): string {
+                $read[] = $name;
+
+                return 'http://env.example';
+            };
+
+            self::assertSame(
+                ['url' => $url, 'fromEnvironment' => false],
+                get_object_vars(Credentials::resolveCaptureEndpoint($baseUrl, $lookup)),
+            );
+            self::assertSame([], $read);
+        }
+    }
+
+    public function testWithoutABaseUrlTheBaseUrlVariableIsRead(): void
+    {
+        foreach ([null, ''] as $baseUrl) {
+            $read = [];
+            $lookup = static function (string $name) use (&$read): string {
+                $read[] = $name;
+
+                return 'http://localhost:8787/';
+            };
+
+            self::assertSame(
+                ['url' => 'http://localhost:8787/v1/capture', 'fromEnvironment' => true],
+                get_object_vars(Credentials::resolveCaptureEndpoint($baseUrl, $lookup)),
+            );
+            self::assertSame(['SCREENSHOTSCOUT_BASE_URL'], $read);
+        }
+    }
+
+    public function testAnUnsetOrEmptyBaseUrlVariableMeansTheScreenshotScoutApi(): void
+    {
+        foreach ([[], ['SCREENSHOTSCOUT_BASE_URL' => '']] as $variables) {
+            self::assertSame(
+                ['url' => 'https://api.screenshotscout.com/v1/capture', 'fromEnvironment' => false],
+                get_object_vars(Credentials::resolveCaptureEndpoint(null, self::lookup($variables))),
+            );
+        }
+    }
+
+    public function testAWhitespaceOnlyBaseUrlVariableIsAnErrorThatNamesIt(): void
+    {
+        try {
+            Credentials::resolveCaptureEndpoint(null, self::lookup(['SCREENSHOTSCOUT_BASE_URL' => " \t"]));
+            self::fail('Expected resolving the base URL to fail.');
+        } catch (ConfigurationException $exception) {
+            self::assertSame('SCREENSHOTSCOUT_BASE_URL is set but blank.', $exception->getMessage());
+        }
+    }
+
     /**
      * @param array<string, string> $variables
      *

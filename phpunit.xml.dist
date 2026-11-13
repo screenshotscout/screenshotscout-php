@@ -15,4 +15,9 @@
       <directory>src</directory>
     </include>
   </source>
+  <php>
+    <!-- Every client reads this variable, even with keys passed, so a developer's own value must not reach
+         the tests. An empty value counts as unset. -->
+    <env name="SCREENSHOTSCOUT_BASE_URL" value="" force="true"/>
+  </php>
 </phpunit>

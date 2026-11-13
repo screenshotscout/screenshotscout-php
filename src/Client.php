@@ -27,7 +27,6 @@ use ScreenshotScout\Internal\WirePair;
 /** Reusable blocking Screenshot Scout client with an optional custom PSR-18 transport. */
 final class Client
 {
-    private const CAPTURE_ENDPOINT = 'https://api.screenshotscout.com/v1/capture';
     private const ACCESS_KEY_PATTERN = '#^[A-Za-z0-9\-._~+/]+=*$#D';
     /** Longer than the longest capture Screenshot Scout allows (240 seconds). */
     private const STREAM_TIMEOUT_SECONDS = 300;
@@ -36,6 +35,8 @@ final class Client
     private readonly \SensitiveParameterValue $accessKey;
     private readonly ?\SensitiveParameterValue $secretKey;
     private readonly bool $secretKeyFromEnvironment;
+    private readonly string $captureEndpoint;
+    private readonly bool $baseUrlFromEnvironment;
     private readonly ClientInterface $httpClient;
 
     /**
@@ -43,6 +44,10 @@ final class Client
      *
      * When both keys are null, the client reads SCREENSHOTSCOUT_ACCESS_KEY and, if it's set,
      * SCREENSHOTSCOUT_SECRET_KEY. Passing either key means neither variable is read.
+     *
+     * Pass $baseUrl to send requests to another server, such as your own proxy or a mock server. Captures
+     * go to the base URL plus /v1/capture, and buildCaptureUrl() builds URLs on it. When $baseUrl is null
+     * or empty, the client reads SCREENSHOTSCOUT_BASE_URL, and without that uses the Screenshot Scout API.
      */
     public function __construct(
         #[\SensitiveParameter]
@@ -50,6 +55,7 @@ final class Client
         #[\SensitiveParameter]
         ?string $secretKey = null,
         ?ClientInterface $httpClient = null,
+        ?string $baseUrl = null,
     ) {
         $credentials = Credentials::resolve($accessKey, $secretKey, Environment::read(...));
 
@@ -68,9 +74,13 @@ final class Client
             );
         }
 
+        $endpoint = Credentials::resolveCaptureEndpoint($baseUrl, Environment::read(...));
+
         $this->accessKey = new \SensitiveParameterValue($accessKey);
         $this->secretKey = null === $secretKey ? null : new \SensitiveParameterValue($secretKey);
         $this->secretKeyFromEnvironment = $credentials->fromEnvironment && null !== $secretKey;
+        $this->captureEndpoint = $endpoint->url;
+        $this->baseUrlFromEnvironment = $endpoint->fromEnvironment;
         $this->httpClient = $httpClient ?? self::defaultHttpClient();
     }
 
@@ -105,7 +115,8 @@ final class Client
             throw $exception;
         } catch (\Throwable $cause) {
             throw new TransportException(
-                'Screenshot Scout request failed before a complete HTTP response body was received.',
+                'Screenshot Scout request failed before a complete HTTP response body was received.'
+                . $this->baseUrlSource(),
                 $cause,
             );
         }
@@ -127,7 +138,7 @@ final class Client
             $pairs[] = new WirePair('signature', $signature);
         }
 
-        return self::CAPTURE_ENDPOINT . '?' . CaptureSerializer::encodeQuery($pairs);
+        return $this->captureEndpoint . '?' . CaptureSerializer::encodeQuery($pairs);
     }
 
     private function accessKey(): string
@@ -144,6 +155,14 @@ final class Client
         $secretKey = $this->secretKey?->getValue();
 
         return $secretKey;
+    }
+
+    /** Names SCREENSHOTSCOUT_BASE_URL in request failures when the base URL comes from it. */
+    private function baseUrlSource(): string
+    {
+        return $this->baseUrlFromEnvironment
+            ? ' The base URL comes from ' . Credentials::BASE_URL_VARIABLE . '.'
+            : '';
     }
 
     /** @param list<WirePair> $pairs */
@@ -178,13 +197,13 @@ final class Client
                 }
                 $request = new Request(
                     CaptureHttpMethod::GET->value,
-                    self::CAPTURE_ENDPOINT . '?' . CaptureSerializer::encodeQuery($pairs),
+                    $this->captureEndpoint . '?' . CaptureSerializer::encodeQuery($pairs),
                 );
             } else {
                 $json = CaptureSerializer::serializeJsonBody($serialized->body);
                 $request = new Request(
                     CaptureHttpMethod::POST->value,
-                    self::CAPTURE_ENDPOINT,
+                    $this->captureEndpoint,
                     ['Content-Type' => 'application/json'],
                     $json,
                 );
@@ -195,7 +214,7 @@ final class Client
             throw $exception;
         } catch (\Throwable $cause) {
             throw new SerializationException(
-                'The Screenshot Scout HTTP request could not be constructed.',
+                'The Screenshot Scout HTTP request could not be constructed.' . $this->baseUrlSource(),
                 null,
                 $cause,
             );

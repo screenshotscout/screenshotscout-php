@@ -1,0 +1,172 @@
+# Releases screenshotscout/sdk when a vX.Y.Z tag is pushed. Packagist reads the tag
+# itself through its GitHub integration, so pushing the tag is the release. This
+# workflow also asks Packagist to update (when the PACKAGIST_USERNAME variable and
+# PACKAGIST_TOKEN secret are set), waits until the version is listed, then creates
+# the GitHub release from the tag message's body.
+#
+# Because the tag push is the release, run this by hand on main with the new
+# version first (Actions > Release > Run workflow): it runs the checks and tests,
+# checks the version, and changes nothing. Tick "check credentials" to test the
+# Packagist token (it asks Packagist to re-read the repository, which is harmless).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Dry run only: the version you're about to tag (for example 1.2.3), to check it"
+        required: false
+        type: string
+      check_credentials:
+        description: "Also check the Packagist token in the release environment"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "8.3"
+          tools: composer:v2
+          coverage: none
+
+      - run: composer validate --strict
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      # Formatting check, PHPStan and PHPUnit.
+      - run: composer check
+
+      - name: Check the version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then tag="$GITHUB_REF_NAME"; elif [[ -n "$INPUT_VERSION" ]]; then tag="v$INPUT_VERSION"; else exit 0; fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::$tag isn't a vX.Y.Z version."
+            exit 1
+          fi
+          # Packagist takes the version from the tag, so composer.json must not have one.
+          if jq -e 'has("version")' composer.json >/dev/null; then
+            echo "::error::composer.json has a version field; Packagist takes the version from the tag."
+            exit 1
+          fi
+          git fetch --force --tags --quiet origin
+          previous="$(git tag --list 'v*' --sort=-v:refname | grep -vx -- "$tag" | grep -v -- '-' | head -n 1 || true)"
+          if [[ -n "$previous" && "$(printf '%s\n%s\n' "$previous" "$tag" | sort -V | tail -n 1)" != "$tag" ]]; then
+            echo "::error::$tag isn't higher than the latest release, $previous."
+            exit 1
+          fi
+          echo "$tag follows ${previous:-no earlier release}."
+
+      - name: Read the release notes from the tag
+        if: github.event_name == 'push'
+        run: |
+          # Fetch the tag object itself, so an annotated tag stays annotated.
+          git fetch --force --no-tags origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          if [[ "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" != "tag" ]]; then
+            echo "::error::${GITHUB_REF_NAME} isn't an annotated tag, so it has no release notes. Create it with git tag -a."
+            exit 1
+          fi
+          git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents:body)' > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::Tag ${GITHUB_REF_NAME} has no release notes. Write them in the tag message, below the subject line."
+            exit 1
+          fi
+          cat release-notes.md
+
+      - if: github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  # Manual runs only: checks the Packagist token by asking Packagist to re-read the repository.
+  credentials:
+    if: github.event_name == 'workflow_dispatch' && inputs.check_credentials
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Ask Packagist to update
+        env:
+          PACKAGIST_USERNAME: ${{ vars.PACKAGIST_USERNAME }}
+          PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
+        run: |
+          if [[ -z "$PACKAGIST_USERNAME" || -z "$PACKAGIST_TOKEN" ]]; then
+            echo "::error::The PACKAGIST_USERNAME variable or the PACKAGIST_TOKEN secret isn't set in the release environment."
+            exit 1
+          fi
+          curl -fsS -X POST https://packagist.org/api/update-package \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${PACKAGIST_USERNAME}:${PACKAGIST_TOKEN}" \
+            -d "{\"repository\":\"https://github.com/${GITHUB_REPOSITORY}\"}"
+          echo
+          echo "Packagist accepted the token."
+
+  publish:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Ask Packagist to update
+        env:
+          PACKAGIST_USERNAME: ${{ vars.PACKAGIST_USERNAME }}
+          PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
+        run: |
+          if [[ -z "$PACKAGIST_USERNAME" || -z "$PACKAGIST_TOKEN" ]]; then
+            echo "No Packagist token is set, so this relies on Packagist's GitHub integration."
+            exit 0
+          fi
+          curl -fsS -X POST https://packagist.org/api/update-package \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${PACKAGIST_USERNAME}:${PACKAGIST_TOKEN}" \
+            -d "{\"repository\":\"https://github.com/${GITHUB_REPOSITORY}\"}"
+          echo
+
+      - name: Wait until Packagist lists the new version
+        run: |
+          for _ in $(seq 1 90); do
+            if curl -fsS https://repo.packagist.org/p2/screenshotscout/sdk.json \
+              | jq -e --arg v "$GITHUB_REF_NAME" '.packages["screenshotscout/sdk"] | any(.[]; .version == $v)' >/dev/null; then
+              echo "screenshotscout/sdk $GITHUB_REF_NAME is live on Packagist."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::screenshotscout/sdk $GITHUB_REF_NAME isn't listed on Packagist after 15 minutes."
+          exit 1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-notes
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "The GitHub release for $GITHUB_REF_NAME already exists."
+            exit 0
+          fi
+          flags=()
+          if [[ "$version" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Screenshot Scout PHP SDK $version" --notes-file release-notes.md "${flags[@]}"

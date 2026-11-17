@@ -15,6 +15,7 @@ final class DefaultBinaryCaptureResponse implements BinaryCaptureResponse
         private readonly ?string $screenshotUrl,
         private readonly ?string $screenshotUrlExpiresAt,
         private readonly ?string $cacheStatus,
+        private readonly ?string $markdown,
     ) {}
 
     public function bytes(): string
@@ -35,6 +36,11 @@ final class DefaultBinaryCaptureResponse implements BinaryCaptureResponse
     public function cacheStatus(): ?string
     {
         return $this->cacheStatus;
+    }
+
+    public function markdown(): ?string
+    {
+        return $this->markdown;
     }
 
     public function rawResponse(): RawResponse

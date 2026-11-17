@@ -8,6 +8,7 @@ use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use ScreenshotScout\BinaryCaptureResponse;
+use ScreenshotScout\CaptureFormat;
 use ScreenshotScout\CaptureOptions;
 use ScreenshotScout\CaptureResponseType;
 use ScreenshotScout\Client;
@@ -36,6 +37,7 @@ final class ResponseAndFailureTest extends TestCase
         self::assertSame('https://cdn.example/screenshot.png', $response->screenshotUrl());
         self::assertSame('2026-07-14T00:00:00Z', $response->screenshotUrlExpiresAt());
         self::assertSame('HIT', $response->cacheStatus());
+        self::assertNull($response->markdown());
         self::assertSame(201, $response->rawResponse()->statusCode());
         self::assertSame('Created', $response->rawResponse()->reasonPhrase());
         self::assertSame('image/png', $response->rawResponse()->contentType());
@@ -44,6 +46,23 @@ final class ResponseAndFailureTest extends TestCase
             ['a=1; Path=/', 'b=2; Path=/'],
             $response->rawResponse()->header('set-cookie'),
         );
+    }
+
+    public function testMarkdownResponseProvidesTheMarkdownText(): void
+    {
+        $body = "# Привет\n\nHello, world.\n";
+        foreach (['text/markdown; charset=utf-8', 'TEXT/MARKDOWN'] as $contentType) {
+            $transport = $this->respondingWith(new Response(200, ['Content-Type' => $contentType], $body));
+
+            $response = $this->client($transport)->capture(
+                'https://example.com',
+                (new CaptureOptions())->withFormat(CaptureFormat::MD),
+            );
+
+            self::assertInstanceOf(BinaryCaptureResponse::class, $response);
+            self::assertSame($body, $response->markdown());
+            self::assertSame($body, $response->bytes());
+        }
     }
 
     public function testJsonResponseRetainsDocumentedAndAdditionalFields(): void

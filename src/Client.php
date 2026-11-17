@@ -323,6 +323,7 @@ final class Client
             self::firstHeader($rawResponse, 'Screenshot-Scout-Screenshot-URL'),
             self::firstHeader($rawResponse, 'Screenshot-Scout-Screenshot-URL-Expires-At'),
             self::firstHeader($rawResponse, 'Screenshot-Scout-Cache-Status'),
+            self::isMarkdownMediaType($rawResponse->contentType()) ? $rawResponse->body() : null,
         );
     }
 
@@ -410,6 +411,17 @@ final class Client
         $mediaType = strtolower(trim(false === $separator ? $contentType : substr($contentType, 0, $separator)));
 
         return 'application/json' === $mediaType || str_ends_with($mediaType, '+json');
+    }
+
+    private static function isMarkdownMediaType(?string $contentType): bool
+    {
+        if (null === $contentType) {
+            return false;
+        }
+        $separator = strpos($contentType, ';');
+        $mediaType = strtolower(trim(false === $separator ? $contentType : substr($contentType, 0, $separator)));
+
+        return 'text/markdown' === $mediaType;
     }
 
     private static function firstHeader(RawResponse $response, string $name): ?string

@@ -10,6 +10,7 @@ final class CaptureFormat
     public const GIF = 'gif';
     public const JPEG = 'jpeg';
     public const JPG = 'jpg';
+    public const MD = 'md';
     public const PDF = 'pdf';
     public const PNG = 'png';
     public const TIFF = 'tiff';

@@ -38,6 +38,7 @@ final class ResponseAndFailureTest extends TestCase
         self::assertSame('2026-07-14T00:00:00Z', $response->screenshotUrlExpiresAt());
         self::assertSame('HIT', $response->cacheStatus());
         self::assertNull($response->markdown());
+        self::assertNull($response->html());
         self::assertSame(201, $response->rawResponse()->statusCode());
         self::assertSame('Created', $response->rawResponse()->reasonPhrase());
         self::assertSame('image/png', $response->rawResponse()->contentType());
@@ -61,6 +62,25 @@ final class ResponseAndFailureTest extends TestCase
 
             self::assertInstanceOf(BinaryCaptureResponse::class, $response);
             self::assertSame($body, $response->markdown());
+            self::assertNull($response->html());
+            self::assertSame($body, $response->bytes());
+        }
+    }
+
+    public function testHtmlResponseProvidesTheHtml(): void
+    {
+        $body = '<!DOCTYPE html><html><body><h1>Привет</h1><p>Hello, world.</p></body></html>';
+        foreach (['text/html; charset=utf-8', 'TEXT/HTML; charset=UTF-8'] as $contentType) {
+            $transport = $this->respondingWith(new Response(200, ['Content-Type' => $contentType], $body));
+
+            $response = $this->client($transport)->capture(
+                'https://example.com',
+                (new CaptureOptions())->withFormat(CaptureFormat::HTML),
+            );
+
+            self::assertInstanceOf(BinaryCaptureResponse::class, $response);
+            self::assertSame($body, $response->html());
+            self::assertNull($response->markdown());
             self::assertSame($body, $response->bytes());
         }
     }

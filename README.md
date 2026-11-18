@@ -57,45 +57,15 @@ echo ($response->screenshotUrl() ?? 'No screenshot URL returned') . PHP_EOL;
 ```
 
 POST is the default, or GET when the client has a secret key. `capture()` returns a
-`BinaryCaptureResponse` unless JSON is requested. Use `bytes()` to access the screenshot, PDF, or
-Markdown contents.
-
-## Get a page as Markdown
-
-Set the format to `CaptureFormat::MD` to get the page as Markdown:
-
-```php
-<?php
-
-declare(strict_types=1);
-
-use ScreenshotScout\BinaryCaptureResponse;
-use ScreenshotScout\CaptureFormat;
-use ScreenshotScout\CaptureOptions;
-use ScreenshotScout\Client;
-
-require __DIR__ . '/vendor/autoload.php';
-
-$client = new Client(); // Reads SCREENSHOTSCOUT_ACCESS_KEY
-
-$response = $client->capture(
-    'https://example.com',
-    (new CaptureOptions())->withFormat(CaptureFormat::MD),
-);
-
-if (!$response instanceof BinaryCaptureResponse) {
-    throw new RuntimeException('Expected a binary response.');
-}
-
-file_put_contents('page.md', $response->markdown());
-```
-
-`markdown()` returns the Markdown text, or `null` for other formats.
+`BinaryCaptureResponse` unless JSON is requested. Use `bytes()` to access the screenshot, PDF,
+Markdown, or HTML contents.
+With `CaptureFormat::MD` or `CaptureFormat::HTML`, the text is also in `markdown()` or
+`html()`.
 
 ## Request a JSON result
 
-Set the response type to JSON when you want capture metadata instead of image, PDF, or Markdown
-bytes:
+Set the response type to JSON when you want capture metadata instead of image, PDF, Markdown, or
+HTML bytes:
 
 ```php
 <?php

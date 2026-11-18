@@ -8,6 +8,7 @@ namespace ScreenshotScout;
 final class CaptureFormat
 {
     public const GIF = 'gif';
+    public const HTML = 'html';
     public const JPEG = 'jpeg';
     public const JPG = 'jpg';
     public const MD = 'md';

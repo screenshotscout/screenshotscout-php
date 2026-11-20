@@ -15,11 +15,17 @@ final class SerializationBuilder
     /** @var array<string, string|int|float|bool|list<string>> */
     private array $body;
 
-    public function __construct(string $targetUrl)
+    /**
+     * Starts with what to capture: a page's URL, or an HTML document. It's written first, before the
+     * options, and kept exactly as given.
+     *
+     * @param 'url'|'html' $targetName
+     */
+    public function __construct(string $targetName, string $targetValue)
     {
-        self::validateString($targetUrl, 'url');
-        $this->pairs = [new WirePair('url', $targetUrl)];
-        $this->body = ['url' => $targetUrl];
+        self::validateString($targetValue, $targetName);
+        $this->pairs = [new WirePair($targetName, $targetValue)];
+        $this->body = [$targetName => $targetValue];
     }
 
     public function add(

@@ -95,17 +95,59 @@ final class Client
         ?CaptureHttpMethod $method = null,
     ): CaptureResponse {
         $serialized = CaptureSerializer::serialize($url, $options);
-        $expectedKind = self::expectedResponseKind($options);
         if (null !== $this->secretKey && CaptureHttpMethod::POST === $method) {
             throw new ConfigurationException(sprintf(
                 "POST requests can't be signed. This client has a secret key%s: send this capture with method GET, "
                 . "or use a client without a secret key and an API key that doesn't require signed requests.",
-                $this->secretKeyFromEnvironment ? ' from ' . Credentials::SECRET_KEY_VARIABLE : '',
+                $this->secretKeySource(),
             ));
         }
         // Without a method, a client that signs sends GET, because POST requests can't be signed.
         $method ??= null === $this->secretKey ? CaptureHttpMethod::POST : CaptureHttpMethod::GET;
+
+        return $this->send($serialized, $method, $options);
+    }
+
+    /**
+     * Captures an HTML document instead of a URL, such as an invoice or a report you generated, and waits
+     * for the final inline capture response. The HTML is sent exactly as given, in a POST request. A client
+     * with a secret key refuses it, because POST requests can't be signed.
+     */
+    public function captureFromHtml(string $html, ?CaptureOptions $options = null): CaptureResponse
+    {
+        $serialized = CaptureSerializer::serializeHtml($html, $options);
+        if (null !== $this->secretKey) {
+            throw new ConfigurationException(sprintf(
+                "`captureFromHtml` sends the HTML in a POST body, which can't be signed. This client has a secret "
+                . "key%s: use a client without a secret key and an API key that doesn't require signed requests.",
+                $this->secretKeySource(),
+            ));
+        }
+
+        return $this->send($serialized, CaptureHttpMethod::POST, $options);
+    }
+
+    /** Builds a sensitive GET capture URL without performing network I/O. */
+    public function buildCaptureUrl(string $url, ?CaptureOptions $options = null): string
+    {
+        $serialized = CaptureSerializer::serialize($url, $options);
         $signature = $this->createSignature($serialized->pairs);
+        $pairs = [new WirePair('access_key', $this->accessKey()), ...$serialized->pairs];
+        if (null !== $signature) {
+            $pairs[] = new WirePair('signature', $signature);
+        }
+
+        return $this->captureEndpoint . '?' . CaptureSerializer::encodeQuery($pairs);
+    }
+
+    private function send(
+        SerializedCaptureOptions $serialized,
+        CaptureHttpMethod $method,
+        ?CaptureOptions $options,
+    ): CaptureResponse {
+        $expectedKind = self::expectedResponseKind($options);
+        // Only GET requests are signed, because POST requests can't be.
+        $signature = CaptureHttpMethod::GET === $method ? $this->createSignature($serialized->pairs) : null;
         $request = $this->createRequest($serialized, $method, $signature);
 
         try {
@@ -128,19 +170,6 @@ final class Client
         return self::decodeSuccessResponse($rawResponse, $expectedKind);
     }
 
-    /** Builds a sensitive GET capture URL without performing network I/O. */
-    public function buildCaptureUrl(string $url, ?CaptureOptions $options = null): string
-    {
-        $serialized = CaptureSerializer::serialize($url, $options);
-        $signature = $this->createSignature($serialized->pairs);
-        $pairs = [new WirePair('access_key', $this->accessKey()), ...$serialized->pairs];
-        if (null !== $signature) {
-            $pairs[] = new WirePair('signature', $signature);
-        }
-
-        return $this->captureEndpoint . '?' . CaptureSerializer::encodeQuery($pairs);
-    }
-
     private function accessKey(): string
     {
         /** @var string $accessKey */
@@ -155,6 +184,12 @@ final class Client
         $secretKey = $this->secretKey?->getValue();
 
         return $secretKey;
+    }
+
+    /** Names SCREENSHOTSCOUT_SECRET_KEY in refusals when the secret key comes from it. */
+    private function secretKeySource(): string
+    {
+        return $this->secretKeyFromEnvironment ? ' from ' . Credentials::SECRET_KEY_VARIABLE : '';
     }
 
     /** Names SCREENSHOTSCOUT_BASE_URL in request failures when the base URL comes from it. */

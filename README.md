@@ -93,6 +93,57 @@ if (!$response instanceof JsonCaptureResponse) {
 echo ($response->result()->screenshotUrl() ?? 'No screenshot URL returned') . PHP_EOL;
 ```
 
+## Capture from HTML
+
+To render HTML you generated, such as an invoice or a report, call `captureFromHtml()` with the
+document instead of a URL. It takes the same `CaptureOptions` as `capture()`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use ScreenshotScout\BinaryCaptureResponse;
+use ScreenshotScout\CaptureFormat;
+use ScreenshotScout\CaptureOptions;
+use ScreenshotScout\Client;
+
+require __DIR__ . '/vendor/autoload.php';
+
+$client = new Client(); // Reads SCREENSHOTSCOUT_ACCESS_KEY
+
+$html = <<<'HTML'
+    <!doctype html>
+    <html>
+      <head>
+        <title>Invoice #1042</title>
+      </head>
+      <body>
+        <h1>Invoice #1042</h1>
+        <p>Total due: $480.00</p>
+      </body>
+    </html>
+    HTML;
+
+$response = $client->captureFromHtml(
+    $html,
+    (new CaptureOptions())->withFormat(CaptureFormat::PDF),
+);
+
+if (!$response instanceof BinaryCaptureResponse) {
+    throw new RuntimeException('Expected a binary response.');
+}
+
+file_put_contents('invoice.pdf', $response->bytes());
+```
+
+Send a complete document that starts with `<!doctype html>`. A PDF takes its title from `<title>`.
+The page has no URL, so use absolute URLs for images, stylesheets and fonts, or add a `<base href>`.
+See [How to Render HTML](https://screenshotscout.com/docs/guides/render-html) for more.
+
+The HTML is sent in a POST request, which can't be signed. So `captureFromHtml()` needs a client
+without a secret key, and an API key that doesn't require signed requests.
+
 ## Use GET
 
 POST is the default, or GET when the client has a secret key. To send a GET request, pass

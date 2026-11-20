@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace ScreenshotScout\Tests;
 
+use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -276,6 +279,61 @@ final class ResponseAndFailureTest extends TestCase
             self::assertSame($nativeCause, $exception->getPrevious());
         }
         self::assertCount(1, $transport->requests());
+    }
+
+    public function testCaptureFromHtmlDecodesResponsesLikeCapture(): void
+    {
+        $pdfTransport = $this->respondingWith(new Response(200, [
+            'Content-Type' => 'application/pdf',
+            'Screenshot-Scout-Screenshot-URL' => 'https://cdn.example/invoice.pdf',
+        ], '%PDF-1.7'));
+
+        $pdf = $this->client($pdfTransport)->captureFromHtml(
+            '<!doctype html><title>Invoice #1042</title>',
+            (new CaptureOptions())->withFormat(CaptureFormat::PDF),
+        );
+
+        self::assertInstanceOf(BinaryCaptureResponse::class, $pdf);
+        self::assertSame('%PDF-1.7', $pdf->bytes());
+        self::assertSame('https://cdn.example/invoice.pdf', $pdf->screenshotUrl());
+
+        $jsonTransport = $this->respondingWith(new Response(
+            200,
+            ['Content-Type' => 'application/json'],
+            '{"screenshot_url":"https://cdn.example/invoice.pdf"}',
+        ));
+
+        $json = $this->client($jsonTransport)->captureFromHtml(
+            '<!doctype html><title>Invoice #1042</title>',
+            (new CaptureOptions())->withFormat(CaptureFormat::PDF)->withResponseType(CaptureResponseType::JSON),
+        );
+
+        self::assertInstanceOf(JsonCaptureResponse::class, $json);
+        self::assertSame('https://cdn.example/invoice.pdf', $json->result()->screenshotUrl());
+    }
+
+    public function testABodyOverTheSizeLimitIsAnApiExceptionAlsoThroughGuzzle(): void
+    {
+        $body = '{"error_code":"request_too_large","error_message":"The request body must be at most 5 MB."}';
+        $tooLarge = static fn(): Response => new Response(413, ['Content-Type' => 'application/json'], $body);
+        $httpClients = [
+            $this->respondingWith($tooLarge()),
+            // Guzzle's PSR-18 client, which the SDK uses by default, with Guzzle's default middleware.
+            new GuzzleClient(['handler' => HandlerStack::create(new MockHandler([$tooLarge()]))]),
+        ];
+
+        foreach ($httpClients as $httpClient) {
+            try {
+                (new Client('key', httpClient: $httpClient))->captureFromHtml('<!doctype html><title>Invoice</title>');
+                self::fail('Expected an API exception.');
+            } catch (ApiException $exception) {
+                self::assertSame(413, $exception->statusCode());
+                self::assertSame('request_too_large', $exception->errorCode());
+                self::assertSame('The request body must be at most 5 MB.', $exception->errorMessage());
+                self::assertSame('The request body must be at most 5 MB.', $exception->getMessage());
+                self::assertSame($body, $exception->rawResponse()->body());
+            }
+        }
     }
 
     public function testDefaultHttpClientWaitsLongerThanTheLongestCaptureWithoutCurl(): void

@@ -13,8 +13,22 @@ final class CaptureSerializer
 {
     public static function serialize(string $targetUrl, ?CaptureOptions $options): SerializedCaptureOptions
     {
+        return self::serializeTarget('url', $targetUrl, $options);
+    }
+
+    public static function serializeHtml(string $html, ?CaptureOptions $options): SerializedCaptureOptions
+    {
+        return self::serializeTarget('html', $html, $options);
+    }
+
+    /** @param 'url'|'html' $targetName */
+    private static function serializeTarget(
+        string $targetName,
+        string $targetValue,
+        ?CaptureOptions $options,
+    ): SerializedCaptureOptions {
         try {
-            $builder = new SerializationBuilder($targetUrl);
+            $builder = new SerializationBuilder($targetName, $targetValue);
             if (null === $options) {
                 return $builder->build();
             }

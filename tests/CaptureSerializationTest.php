@@ -6,6 +6,7 @@ namespace ScreenshotScout\Tests;
 
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use ScreenshotScout\CaptureFormat;
 use ScreenshotScout\CaptureHttpMethod;
 use ScreenshotScout\CaptureOptions;
 use ScreenshotScout\CaptureResponse;
@@ -438,6 +439,106 @@ final class CaptureSerializationTest extends TestCase
         self::assertNull($base->fullPage());
         self::assertSame(['a=1', 'a=1'], $configured->cookies());
         self::assertFalse($configured->fullPage());
+    }
+
+    public function testCaptureFromHtmlSendsTheHtmlFirstInAPostBodyExactlyAsGiven(): void
+    {
+        $transport = new RecordingHttpClient();
+        $client = $this->client($transport, 'access-key');
+        $html = "  <!doctype html>\n<html><head><title>Invoice #1042</title></head><body>"
+            . "<h1>Zoë & \"Café\" <a href=\"https://example.com/a/b\">Привет</a></h1></body></html>\n  ";
+
+        $client->captureFromHtml(
+            $html,
+            (new CaptureOptions())
+                ->withFormat(CaptureFormat::PDF)
+                ->withPdfPrintBackground(true)
+                ->withCookies(['session=abc; Domain=example.com']),
+        );
+
+        self::assertCount(1, $transport->requests());
+        $request = $transport->requests()[0];
+        self::assertSame('POST', $request->getMethod());
+        self::assertSame('https://api.screenshotscout.com/v1/capture', (string) $request->getUri());
+        self::assertSame('', $request->getUri()->getQuery());
+        self::assertSame('Bearer access-key', $request->getHeaderLine('Authorization'));
+        self::assertSame('application/json', $request->getHeaderLine('Content-Type'));
+        // <, >, &, / and non-ASCII letters are written as they are.
+        self::assertSame(
+            '{"html":"  <!doctype html>\n<html><head><title>Invoice #1042</title></head><body>'
+            . '<h1>Zoë & \"Café\" <a href=\"https://example.com/a/b\">Привет</a></h1></body></html>\n  ",'
+            . '"format":"pdf","cookies":["session=abc; Domain=example.com"],"pdf_print_background":true}',
+            (string) $request->getBody(),
+        );
+        self::assertSame($html, self::decodeRequestBody($request)['html']);
+    }
+
+    public function testCaptureFromHtmlChecksOnlyThatTheHtmlIsValidUtf8(): void
+    {
+        $transport = new RecordingHttpClient();
+        $client = $this->client($transport);
+        // A stray byte, an overlong form, an encoded surrogate, a cut-off character and Latin-1 text.
+        $invalid = ["<p>\xFF</p>", "<p>\xC0\xAF</p>", "<p>\xED\xA0\x80</p>", "<p>\xE2\x82</p>", "<p>caf\xE9</p>"];
+
+        foreach ($invalid as $html) {
+            try {
+                $client->captureFromHtml($html);
+                self::fail('Expected invalid UTF-8 to fail.');
+            } catch (SerializationException $exception) {
+                self::assertSame('html', $exception->option());
+                self::assertSame('The capture option "html" must contain valid UTF-8.', $exception->getMessage());
+            }
+        }
+        self::assertCount(0, $transport->requests());
+
+        // Empty HTML, like everything else, is the API's to judge.
+        $client->captureFromHtml('');
+        $client->captureFromHtml(" \n\t");
+
+        self::assertSame('{"html":""}', (string) $transport->requests()[0]->getBody());
+        self::assertSame('{"html":" \n\t"}', (string) $transport->requests()[1]->getBody());
+    }
+
+    public function testClientWithASecretKeyRefusesCaptureFromHtmlWithoutCallingTheTransport(): void
+    {
+        $transport = new RecordingHttpClient();
+        $client = $this->client($transport, 'ak_test', 'sk_test');
+
+        $this->expectConfigurationException(
+            static fn(): CaptureResponse => $client->captureFromHtml('<!doctype html><title>Invoice #1042</title>'),
+            "`captureFromHtml` sends the HTML in a POST body, which can't be signed. This client has a secret key: "
+            . "use a client without a secret key and an API key that doesn't require signed requests.",
+        );
+
+        self::assertCount(0, $transport->requests());
+    }
+
+    public function testCaptureOptionsCantCarryTheHtmlOrTheUrl(): void
+    {
+        $methods = array_map(
+            static fn(\ReflectionMethod $method): string => strtolower($method->getName()),
+            (new \ReflectionClass(CaptureOptions::class))->getMethods(\ReflectionMethod::IS_PUBLIC),
+        );
+        self::assertNotContains('withhtml', $methods);
+        self::assertNotContains('withurl', $methods);
+
+        // Values put into the options some other way never reach the request either.
+        $options = new CaptureOptions();
+        (new \ReflectionProperty(CaptureOptions::class, 'values'))->setValue($options, [
+            'html' => '<p>other</p>',
+            'url' => 'https://other.example',
+            'format' => 'pdf',
+        ]);
+        $transport = new RecordingHttpClient();
+        $client = $this->client($transport);
+
+        $client->captureFromHtml('<p>a</p>', $options);
+        $client->capture('https://example.com', $options);
+        $client->capture('https://example.com', $options, CaptureHttpMethod::GET);
+
+        self::assertSame('{"html":"<p>a</p>","format":"pdf"}', (string) $transport->requests()[0]->getBody());
+        self::assertSame('{"url":"https://example.com","format":"pdf"}', (string) $transport->requests()[1]->getBody());
+        self::assertSame('url=https%3A%2F%2Fexample.com&format=pdf', $transport->requests()[2]->getUri()->getQuery());
     }
 
     /** @param callable(): mixed $operation */

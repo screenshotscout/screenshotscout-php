@@ -158,6 +158,23 @@ final class ClientKeysTest extends TestCase
         self::assertCount(0, $transport->requests());
     }
 
+    public function testCaptureFromHtmlNamesTheVariableTheSecretKeyCameFrom(): void
+    {
+        putenv('SCREENSHOTSCOUT_ACCESS_KEY=ak_env');
+        putenv('SCREENSHOTSCOUT_SECRET_KEY=sk_env');
+        $transport = new RecordingHttpClient();
+        $client = new Client(httpClient: $transport);
+
+        $this->expectConfigurationException(
+            static fn(): CaptureResponse => $client->captureFromHtml('<!doctype html><title>Invoice #1042</title>'),
+            "`captureFromHtml` sends the HTML in a POST body, which can't be signed. This client has a secret key "
+            . "from SCREENSHOTSCOUT_SECRET_KEY: use a client without a secret key and an API key that doesn't "
+            . 'require signed requests.',
+        );
+
+        self::assertCount(0, $transport->requests());
+    }
+
     public function testDebugOutputDoesNotRevealTheKeys(): void
     {
         putenv('SCREENSHOTSCOUT_ACCESS_KEY=ak_from_environment');
